@@ -1,7 +1,7 @@
 from django.urls import reverse
 from rest_framework.test import APITestCase
 from rest_framework import status
-from accounts.models import User
+from backend.accounts.models import User
 
 
 class DocumentTests(APITestCase):
