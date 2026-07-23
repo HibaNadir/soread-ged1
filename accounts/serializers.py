@@ -32,3 +32,28 @@ class RegisterSerializer(serializers.ModelSerializer):
         user.save()
 
         return user
+class UserManagementSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "username",
+            "first_name",
+            "last_name",
+            "email",
+            "role",
+            "service",
+            "is_active",
+        ]
+from rest_framework import serializers
+
+
+class CSVImportSerializer(serializers.Serializer):
+    file = serializers.FileField()
+    
+class ResetPasswordSerializer(serializers.Serializer):
+    new_password = serializers.CharField(
+        write_only=True,
+        min_length=8
+    )

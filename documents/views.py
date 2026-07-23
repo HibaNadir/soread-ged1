@@ -1,15 +1,26 @@
 from django.contrib.auth import get_user_model
 from django.db.models import Q
 from django.http import FileResponse
-from drf_spectacular.utils import extend_schema
+
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.exceptions import PermissionDenied
 
+from drf_spectacular.utils import extend_schema
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
+
+from notifications.models import Notification
+from spaces.models import SpaceMember, SpaceActivity
+
+from .models import (
+    Document,
+    DocumentVersion,
+    DocumentShare,
+)
 
 from .serializers import (
     DocumentSerializer,
@@ -18,16 +29,7 @@ from .serializers import (
     ShareDocumentSerializer,
 )
 
-from .models import Document, DocumentVersion, DocumentShare
-from .serializers import (
-    DocumentSerializer,
-    DocumentVersionSerializer,
-    DocumentShareSerializer,
-)
-
 User = get_user_model()
-
-
 class IsOwnerOrAdmin(BasePermission):
     def has_object_permission(self, request, view, obj):
         return request.user.is_staff or obj.owner == request.user
@@ -40,13 +42,53 @@ class DocumentViewSet(viewsets.ModelViewSet):
 
     parser_classes = (MultiPartParser, FormParser)
     def get_queryset(self):
-        return Document.objects.filter(
+        queryset = Document.objects.filter(
             owner=self.request.user,
             is_deleted=False
         )
 
+        title = self.request.query_params.get("title")
+        space = self.request.query_params.get("space")
+        pinned = self.request.query_params.get("pinned")
+
+        if title:
+            queryset = queryset.filter(title__icontains=title)
+
+        if space:
+            queryset = queryset.filter(space_id=space)
+
+        if pinned is not None:
+            if pinned.lower() == "true":
+                queryset = queryset.filter(is_pinned=True)
+            elif pinned.lower() == "false":
+                queryset = queryset.filter(is_pinned=False)
+
+        return queryset
+
     def perform_create(self, serializer):
-        serializer.save(owner=self.request.user)
+
+        space = serializer.validated_data.get("space")
+
+        if space:
+            is_member = SpaceMember.objects.filter(
+                space=space,
+                user=self.request.user
+            ).exists()
+
+            if not is_member:
+                raise PermissionDenied(
+                    "Vous n'êtes pas membre de cet espace."
+                )
+
+        document = serializer.save(owner=self.request.user)
+
+        if document.space:
+            SpaceActivity.objects.create(
+            space=document.space,
+            user=self.request.user,
+            document=document,
+            action="DOCUMENT_ADDED",
+        )
 
     def perform_update(self, serializer):
         serializer.save(owner=self.request.user)
@@ -120,7 +162,19 @@ class DocumentViewSet(viewsets.ModelViewSet):
                 "favorite": document.is_favorite
             }
         )
+    @action(detail=True, methods=["post"])
+    def pin(self, request, pk=None):
+        document = self.get_object()
 
+        document.is_pinned = not document.is_pinned
+        document.save(update_fields=["is_pinned"])
+
+        return Response(
+            {
+                "pinned": document.is_pinned
+            }
+        )
+    
     @action(detail=False, methods=["get"])
     def dashboard(self, request):
         return Response(
@@ -244,7 +298,14 @@ class DocumentViewSet(viewsets.ModelViewSet):
                 "permission": permission,
             },
         )
+        from notifications.models import Notification
 
+        Notification.objects.create(
+        user=user,
+        title="Document partagé",
+        message=f"Le document '{document.title}' a été partagé avec vous.",
+        notification_type="DOCUMENT",
+        )
         serializer = DocumentShareSerializer(share)
 
         return Response(serializer.data)

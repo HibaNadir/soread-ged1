@@ -35,7 +35,7 @@ urlpatterns = [
         name="swagger-ui",),
     path('', lambda request: HttpResponse("Bienvenue sur SOREAD GED")),
     
-
+    path("api/", include("notifications.urls")),
 ]
 
 if settings.DEBUG:

@@ -51,3 +51,45 @@ class SpaceMember(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.space.name}"
+
+class SpaceActivity(models.Model):
+
+    ACTION_CHOICES = [
+        ("SPACE_CREATED", "Space Created"),
+        ("DOCUMENT_ADDED", "Document Added"),
+        ("DOCUMENT_UPDATED", "Document Updated"),
+        ("DOCUMENT_DELETED", "Document Deleted"),
+        ("MEMBER_JOINED", "Member Joined"),
+        ("MEMBER_REMOVED", "Member Removed"),
+    ]
+
+    space = models.ForeignKey(
+        Space,
+        on_delete=models.CASCADE,
+        related_name="activities"
+    )
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE
+    )
+
+    document = models.ForeignKey(
+        "documents.Document",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+
+    action = models.CharField(
+        max_length=30,
+        choices=ACTION_CHOICES
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.user} - {self.action}"

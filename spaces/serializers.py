@@ -1,6 +1,7 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 from .models import Space, SpaceMember
+from .models import Space, SpaceMember, SpaceActivity
 
 User = get_user_model()
 
@@ -48,3 +49,17 @@ class SpaceMemberSerializer(serializers.ModelSerializer):
             user=user,
             **validated_data
         )
+class SpaceActivitySerializer(serializers.ModelSerializer):
+
+    user = serializers.StringRelatedField()
+    document = serializers.StringRelatedField()
+
+    class Meta:
+        model = SpaceActivity
+        fields = [
+            "id",
+            "user",
+            "document",
+            "action",
+            "created_at",
+        ]

@@ -14,6 +14,14 @@ class Document(models.Model):
         blank=True,
         related_name="documents"
     )
+    
+    space = models.ForeignKey(
+        "spaces.Space",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="documents"
+    )
 
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -26,6 +34,7 @@ class Document(models.Model):
 
     is_deleted = models.BooleanField(default=False)
     is_favorite = models.BooleanField(default=False)
+    is_pinned = models.BooleanField(default=False)
 
     def __str__(self):
         return self.title

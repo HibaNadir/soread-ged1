@@ -2,17 +2,27 @@ from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from django.db.models import Q
 
-from .models import Space, SpaceMember
-from .serializers import SpaceSerializer, SpaceMemberSerializer
+from .models import Space, SpaceMember, SpaceActivity
+from documents.models import Document
 
+from .serializers import (
+    SpaceSerializer,
+    SpaceMemberSerializer,
+    SpaceActivitySerializer,
+)
 
 class SpaceViewSet(viewsets.ModelViewSet):
     serializer_class = SpaceSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Space.objects.filter(created_by=self.request.user)
+        return Space.objects.filter(
+            Q(is_private=False) |
+            Q(created_by=self.request.user) |
+            Q(spacemember__user=self.request.user)
+        ).distinct()
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
@@ -47,7 +57,12 @@ class SpaceViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            serializer.save(space=space)
+            member = serializer.save(space=space)
+            SpaceActivity.objects.create(
+                space=space,
+                user=request.user,
+                action="MEMBER_JOINED",
+            )
 
             return Response(serializer.data, status=status.HTTP_201_CREATED)
 
@@ -89,7 +104,7 @@ class SpaceViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
     @action(detail=True, methods=["delete"], url_path="members/(?P<member_id>[^/.]+)")
     def remove_member(self, request, pk=None, member_id=None):
-
+        
         space = self.get_object()
 
         try:
@@ -99,6 +114,12 @@ class SpaceViewSet(viewsets.ModelViewSet):
                 {"error": "Membre introuvable."},
                 status=status.HTTP_404_NOT_FOUND,
             )
+        
+        SpaceActivity.objects.create(
+            space=space,
+            user=request.user,
+            action="MEMBER_REMOVED",
+        )
 
         member.delete()
 
@@ -106,3 +127,49 @@ class SpaceViewSet(viewsets.ModelViewSet):
             {"message": "Membre supprimé avec succès."},
             status=status.HTTP_204_NO_CONTENT,
         )
+    @action(detail=True, methods=["get"])
+    def activities(self, request, pk=None):
+
+        space = self.get_object()
+
+        activities = SpaceActivity.objects.filter(
+           space=space
+        ).order_by("-created_at")
+
+        serializer = SpaceActivitySerializer(
+            activities,
+            many=True,
+        )
+
+        return Response(serializer.data)
+    @action(detail=True, methods=["get"])
+    def dashboard(self, request, pk=None):
+
+        space = self.get_object()
+
+        members_count = SpaceMember.objects.filter(
+            space=space
+        ).count()
+
+        documents_count = Document.objects.filter(
+            space=space,
+            is_deleted=False
+        ).count()
+
+        pinned_count = Document.objects.filter(
+            space=space,
+            is_pinned=True,
+            is_deleted=False
+        ).count()
+
+        recent_activity = SpaceActivity.objects.filter(
+            space=space
+        ).count()
+
+        return Response({
+            "space": space.name,
+            "members": members_count,
+            "documents": documents_count,
+            "pinned_documents": pinned_count,
+            "recent_activities": recent_activity,
+        })
